@@ -15,3 +15,5 @@ staticfiles
 .pytest_cache
 .coverage
 .env.local
+landing
+.github

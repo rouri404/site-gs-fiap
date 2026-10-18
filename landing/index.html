@@ -1,0 +1,1368 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moskitto - Detecção precoce de enchentes</title>
+    <meta name="description" content="Sensores de baixo custo nos bueiros avisam a prefeitura e a Defesa Civil antes do alagamento. Projeto 1º lugar na Global Solution 2025 da FIAP.">
+    <link rel="canonical" href="https://gs2025.cotoo.dev/">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="img/favicon.png" />
+
+    <!-- GSAP & ScrollTrigger -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#b0dcfc',
+                        secondary: '#333333',
+                        alert: '#ff4d4d',
+                    },
+                    fontFamily: {
+                        heading: ['Montserrat', 'sans-serif'],
+                        body: ['Roboto', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        * {
+            scroll-behavior: smooth;
+        }
+        
+        body {
+            font-family: 'Roboto', sans-serif; /* Definido no tailwind.config mas bom ter fallback */
+            color: #333; /* Cor base, Tailwind usa text-gray-XXX */
+            overflow-x: hidden;
+            /* background-color: #f4f4f4; Removido para usar o bg-gray-50 do body da home */
+            margin: 0; /* Removido margin do body para full-width */
+        }
+        
+        h1, h2, h3, h4 {
+            font-family: 'Montserrat', sans-serif; /* Definido no tailwind.config mas bom ter fallback */
+        }
+
+        /* Estilos da navbar (do seu index.html original) */
+        .navbar {
+            backdrop-filter: blur(10px);
+            transition: background 0.3s;
+            z-index: 1000;
+        }
+        
+        .navbar.scrolled {
+            background: rgba(255, 255, 255, 0.95); /* Ajustado para ser mais visível */
+            box-shadow: 0 2px 20px rgba(0,0,0,0.1);
+        }
+        
+        /* Outros estilos customizados do seu index.html original */
+        .hero-parallax {
+            background-attachment: fixed;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-size: cover;
+        }
+        
+        .sensor {
+            transition: transform 0.5s, opacity 0.5s;
+        }
+        
+        .sensor-animate {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(176, 220, 252, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(176, 220, 252, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(176, 220, 252, 0); }
+        }
+        
+        .mqtt-line {
+            position: absolute;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #b0dcfc, transparent);
+            animation: mqtt-transmission 3s infinite linear;
+        }
+        
+        @keyframes mqtt-transmission {
+            0% { transform: translateX(-100%); opacity: 0; }
+            50% { opacity: 1; }
+            100% { transform: translateX(100%); opacity: 0; }
+        }
+        
+        .flip-card {
+            perspective: 1000px;
+        }
+        
+        .flip-card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.8s;
+            transform-style: preserve-3d;
+        }
+        
+        .flip-card:hover .flip-card-inner {
+            transform: rotateY(180deg);
+        }
+        
+        .flip-card-front, .flip-card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+        }
+        
+        .flip-card-back {
+            transform: rotateY(180deg);
+        }
+        
+        .contact-input:focus {
+            box-shadow: 0 0 0 2px #b0dcfc;
+            border-color: #b0dcfc;
+        }
+        
+        .social-icon:hover {
+            color: #b0dcfc;
+            transform: translateY(-3px);
+        }
+        
+        .map-marker {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        
+        .critical {
+            background-color: #ff4d4d;
+            animation: critical-pulse 1.5s infinite;
+        }
+        
+        .moderate {
+            background-color: #facc15; /* Amarelo do Tailwind: yellow-400 */
+        }
+        
+        .normal {
+            background-color: #22c55e; /* Verde do Tailwind: green-500 */
+        }
+        
+        @keyframes critical-pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-15px);
+            box-shadow: 0 20px 30px rgba(0,0,0,0.1);
+        }
+        
+        .animate-on-scroll {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.6s, transform 0.6s;
+        }
+        
+        .animate-on-scroll.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+        
+        @media (min-width: 768px) {
+            .dashboard-grid {
+                gap: 2rem;
+            }
+        }
+        
+        .use-case-diagram {
+            position: relative;
+        }
+        
+        .use-case-step {
+            position: absolute;
+            background: white;
+            border-radius: 12px;
+            padding: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 230px;
+            transition: all 0.5s;
+        }
+        
+        @media (min-width: 640px) {
+            .use-case-step {
+                padding: 16px;
+            }
+        }
+        
+        .water-level-animation {
+            position: relative;
+            height: 200px;
+            overflow: hidden;
+        }
+        
+        @media (min-width: 768px) {
+            .water-level-animation {
+                height: 250px;
+            }
+        }
+        
+        @media (min-width: 1024px) {
+            .water-level-animation {
+                height: 300px;
+            }
+        }
+        
+        .water-level {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, #1e88e5, #64b5f6);
+            height: 30%; /* Exemplo */
+            transition: height 3s ease-in-out;
+        }
+        
+        .scroll-animation-trigger {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .perspective-container {
+            perspective: 1500px;
+        }
+
+        .tilt-card {
+            transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), box-shadow 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        .perspective-container:hover .tilt-card {
+            transform: rotateY(5deg) rotateX(3deg) rotateZ(-1deg) scale(1.03);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+
+    </style>
+</head>
+<body class="bg-gray-50 flex flex-col min-h-screen page-home">
+
+    <nav class="navbar fixed top-0 left-0 right-0 sm:top-4 sm:left-1/2 sm:transform sm:-translate-x-1/2 sm:w-[90%] md:w-[96%] py-3 px-4 sm:px-6 bg-white/80 backdrop-blur-2xl sm:rounded-2xl shadow-xl flex items-center justify-between transition-all duration-300 z-[1000]">
+        <div class="flex items-center space-x-3">
+            <a href="#home" class="flex items-center group">
+                <img src="img/favicon.png" alt="Logo" class="w-10 h-10 mr-2 drop-shadow-lg transition-transform duration-300 group-hover:scale-105" />
+                <span id="logo-text" class="text-2xl font-extrabold text-secondary tracking-tight" style="font-family: 'Montserrat', sans-serif;">Moskitto</span>
+            </a>
+        </div>
+        <div class="hidden md:flex items-center space-x-6">
+            <a href="#home" class="px-4 py-1.5 rounded-xl text-base font-medium text-secondary hover:bg-primary hover:text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">Início</a>
+            <a href="#sobre" class="px-4 py-1.5 rounded-xl text-base font-medium text-secondary hover:bg-primary hover:text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">Sobre</a>
+            <a href="#video" class="px-4 py-1.5 rounded-xl text-base font-medium text-secondary hover:bg-primary hover:text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">Vídeo</a>
+            <a href="https://github.com/rouri404/site-gs-fiap" target="_blank" rel="noopener noreferrer" class="ml-3 px-5 py-1.5 rounded-2xl bg-black text-white text-base font-semibold shadow-lg hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 transition-all duration-200">GitHub</a>
+        </div>
+        <div class="md:hidden flex items-center">
+            <button id="mobile-menu-button" class="text-secondary focus:outline-none">
+                <i class="fas fa-bars text-2xl"></i>
+            </button>
+        </div>
+        <div id="mobile-menu" class="md:hidden bg-white/95 rounded-2xl shadow-2xl absolute top-full right-0 mt-4 w-11/12 max-w-xs py-5 px-5 
+                             opacity-0 invisible transform -translate-y-2 transition-all duration-300 ease-out z-[1001]">
+            <div class="flex flex-col space-y-3">
+                <a href="#home" class="block w-full text-center text-secondary font-medium py-2 px-3 rounded-xl text-base hover:bg-primary hover:text-white transition-all duration-200">Início</a>
+                <a href="#sobre" class="block w-full text-center text-secondary font-medium py-2 px-3 rounded-xl text-base hover:bg-primary hover:text-white transition-all duration-200">Sobre</a>
+                <a href="#video" class="block w-full text-center text-secondary font-medium py-2 px-3 rounded-xl text-base hover:bg-primary hover:text-white transition-all duration-200">Vídeo</a>
+                <a href="#contato" class="block w-full text-center text-secondary hover:text-primary font-medium py-2 px-3 rounded-xl text-base">Contato</a>
+                <a href="https://github.com/rouri404/site-gs-fiap" target="_blank" rel="noopener noreferrer" class="block w-full text-center mt-2 px-3 py-2 rounded-2xl bg-black text-white text-base font-semibold shadow-lg hover:bg-gray-900 transition-all duration-200">GitHub</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-grow"> 
+    <!-- Hero Section -->
+    <section id="home" class="relative pt-0 pb-24 md:pb-32 lg:pb-48 overflow-hidden min-h-screen flex flex-col">
+        <div class="absolute inset-0 bg-gradient-to-r from-primary to-blue-300 opacity-30 z-0"></div>
+        <div class="absolute inset-0 z-0">
+            <div class="absolute top-1/4 left-1/4 w-16 h-16 sm:w-24 sm:h-24 md:w-32 md:h-32 lg:w-48 lg:h-48 rounded-full bg-primary opacity-20 animate-pulse"></div>
+            <div class="absolute top-1/3 right-1/4 w-12 h-12 sm:w-16 sm:h-16 md:w-24 md:h-24 lg:w-32 lg:h-32 rounded-full bg-primary opacity-20 animate-pulse"></div>
+            <div class="absolute bottom-1/4 left-1/3 w-14 h-14 sm:w-20 sm:h-20 md:w-28 md:h-28 lg:w-40 lg:h-40 rounded-full bg-primary opacity-20 animate-pulse"></div>
+            <div class="absolute top-8 left-32 w-8 h-8 sm:w-10 sm:h-10 md:w-14 md:h-14 lg:w-20 lg:h-20 rounded-full bg-primary opacity-15 animate-pulse"></div>
+            <div class="absolute top-1/5 right-16 w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-primary opacity-15 animate-pulse"></div>
+            <div class="absolute bottom-16 right-1/5 w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 lg:w-24 lg:h-24 rounded-full bg-primary opacity-15 animate-pulse"></div>
+            <div class="absolute bottom-8 left-24 w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-primary opacity-15 animate-pulse"></div>
+            <div class="absolute top-1/3 right-1/3 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-primary opacity-15 animate-pulse"></div>
+            <div class="absolute bottom-1/3 left-1/2 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-primary opacity-15 animate-pulse" style="transform: translateX(-50%);"></div>
+        </div>
+        
+        <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 pt-24 sm:pt-28 md:pt-36 flex-grow flex flex-col justify-center">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-16 items-center">
+                <div class="text-center lg:text-left">
+                    <h1 class="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-secondary mb-4 md:mb-6 leading-tight font-heading">
+                        Chega de Enchentes: <span class="text-primary">Monitoramento Inteligente</span> para proteger sua cidade!
+                    </h1>
+                    <p class="text-lg sm:text-xl text-gray-700 mb-6 md:mb-8 max-w-2xl mx-auto lg:mx-0 font-body">
+                        Nossa solução inovadora utiliza tecnologia de baixo custo para prever alagamentos, permitindo ações rápidas e salvando vidas e patrimônio.
+                    </p>
+                    <div class="flex flex-col sm:flex-row justify-center lg:justify-start space-y-3 sm:space-y-0 sm:space-x-4">
+                        <a href="#video" 
+                           class="px-6 py-3 sm:px-8 sm:py-4 bg-primary text-white font-bold rounded-full transition-all duration-300 shadow-lg 
+                                  hover:bg-blue-400 hover:shadow-xl hover:-translate-y-1 
+                                  focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 focus:ring-offset-gray-50 text-base sm:text-lg">
+                            Assistir ao Vídeo
+                        </a>
+                        <a href="#sobre" 
+                           class="px-6 py-3 sm:px-8 sm:py-4 bg-white text-secondary border-2 border-primary font-bold rounded-full transition-all duration-300 shadow-lg 
+                                  hover:bg-gray-100 hover:border-blue-400 hover:shadow-xl hover:-translate-y-1 
+                                  focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-gray-50 text-base sm:text-lg">
+                            Conheça a Solução
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="relative perspective-container group mt-12 lg:mt-0">
+                    <div class="tilt-card bg-white rounded-3xl shadow-2xl p-4 sm:p-6 transform sm:rotate-3 group-hover:shadow-custom-hover-hero">
+                        <div class="relative h-56 sm:h-64 bg-gray-200 border-2 border-dashed rounded-xl overflow-hidden">
+                            <div class="water-level-animation">
+                                <div class="water-level" id="water-level"></div>
+                                <div class="absolute top-0 left-0 right-0 h-12 sm:h-16 bg-gradient-to-b from-gray-800 to-gray-700"></div>
+                                <div class="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-24 h-24 sm:w-32 sm:h-32 bg-gray-900 rounded-full flex items-center justify-center">
+                                    <div class="sensor sensor-animate w-10 h-10 sm:w-12 sm:h-12 bg-primary rounded-full flex items-center justify-center">
+                                        <i class="fas fa-water text-white text-lg sm:text-xl"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flip-card absolute -bottom-4 -left-4 sm:-bottom-6 sm:-left-6 md:-bottom-8 md:-left-8 w-28 h-28 sm:w-32 sm:h-32 md:w-40 md:h-40 lg:w-48 lg:h-48 group">
+                        <div class="flip-card-inner rounded-2xl shadow-xl group-hover:shadow-2xl">
+                            <div class="flip-card-front bg-secondary text-white flex flex-col items-center justify-center p-2 sm:p-4 rounded-2xl">
+                                <i class="fas fa-microchip text-3xl sm:text-4xl md:text-5xl mb-1 sm:mb-2"></i>
+                                <p class="font-bold text-sm sm:text-lg md:text-xl">ESP32</p>
+                            </div>
+                            <div class="flip-card-back bg-blue-400 text-white flex flex-col items-center justify-center p-2 sm:p-4 rounded-2xl">
+                                <h5 class="font-bold text-xs sm:text-md mb-1">Microcontrolador</h5>
+                                <p class="text-xs text-center px-1">Processamento inteligente e conectividade para os sensores.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="flip-card absolute -top-4 -right-4 sm:-top-6 sm:-right-6 md:-top-8 md:-right-8 w-28 h-28 sm:w-32 sm:h-32 md:w-40 md:h-40 lg:w-48 lg:h-48 group">
+                        <div class="flip-card-inner rounded-2xl shadow-xl group-hover:shadow-2xl">
+                            <div class="flip-card-front bg-white text-primary flex flex-col items-center justify-center p-2 sm:p-4 rounded-2xl border-2 border-primary">
+                                <i class="fas fa-sun text-3xl sm:text-4xl md:text-5xl mb-1 sm:mb-2"></i>
+                                <p class="font-bold text-sm sm:text-lg md:text-xl text-secondary">Painel Solar</p>
+                            </div>
+                            <div class="flip-card-back bg-yellow-100 text-secondary flex flex-col items-center justify-center p-2 sm:p-4 rounded-2xl">
+                                <h5 class="font-bold text-xs sm:text-md mb-1">Energia Sustentável</h5>
+                                <p class="text-xs text-center px-1 leading-tight">Garante autonomia energética para monitoramento contínuo.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="mqtt-line" style="top: 50%; left: 0; right: 0; width: 100%;"></div>
+        <!-- Degradê na base da hero section para transição suave -->
+        <div class="absolute bottom-0 left-0 w-full h-64 sm:h-80 md:h-96 pointer-events-none z-20" style="background: linear-gradient(to bottom, transparent 85%, rgba(255,255,255,0.6) 95%, #fff 100%);"></div>
+    </section>
+
+    <!-- Problema: Enchentes urbanas, um desafio crescente -->
+    <section id="problema" class="py-12 md:py-16 lg:py-24 bg-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6">
+            <div class="text-center mb-10 md:mb-12 lg:mb-16">
+                <h2 class="text-2xl sm:text-3xl md:text-4xl font-bold text-secondary mb-3 sm:mb-4 font-heading">Problema: Enchentes urbanas, um desafio crescente</h2>
+                <div class="w-16 sm:w-20 h-1 bg-primary mx-auto mb-4 sm:mb-6"></div>
+                <p class="text-base sm:text-lg md:text-xl text-gray-700 max-w-3xl mx-auto font-body">
+                    Centenas de pontos de alagamento, ruas intransitáveis, cidadãos ilhados. Essa é a dura realidade em muitas cidades brasileiras durante as chuvas. O entupimento de bueiros por lixo agrava a situação, causando prejuízos, riscos à saúde e paralisando a vida urbana. A prevenção é o melhor caminho, e alertas precoces podem fazer toda a diferença.
+                </p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 text-center">
+                <div class="animate-on-scroll">
+                    <div class="p-4 sm:p-6 bg-gray-100 rounded-xl shadow-lg content-3d-card">
+                        <i class="fas fa-house-damage text-3xl sm:text-4xl text-primary mb-3 sm:mb-4"></i>
+                        <h3 class="text-lg sm:text-xl font-bold text-secondary mb-2 font-heading">Prejuízos Materiais</h3>
+                        <p class="text-sm sm:text-base text-gray-600 font-body">Inundações causam perdas significativas em residências, comércios e infraestrutura pública.</p>
+                    </div>
+                </div>
+                <div class="animate-on-scroll" style="animation-delay: 0.2s;">
+                    <div class="p-4 sm:p-6 bg-gray-100 rounded-xl shadow-lg content-3d-card">
+                        <i class="fas fa-heartbeat text-3xl sm:text-4xl text-primary mb-3 sm:mb-4"></i>
+                        <h3 class="text-lg sm:text-xl font-bold text-secondary mb-2 font-heading">Riscos à Saúde</h3>
+                        <p class="text-sm sm:text-base text-gray-600 font-body">Contato com água contaminada e proliferação de vetores de doenças.</p>
+                    </div>
+                </div>
+                <div class="animate-on-scroll" style="animation-delay: 0.4s;">
+                    <div class="p-4 sm:p-6 bg-gray-100 rounded-xl shadow-lg content-3d-card">
+                        <i class="fas fa-car text-3xl sm:text-4xl text-primary mb-3 sm:mb-4"></i>
+                        <h3 class="text-lg sm:text-xl font-bold text-secondary mb-2 font-heading">Mobilidade Comprometida</h3>
+                        <p class="text-sm sm:text-base text-gray-600 font-body">Vias bloqueadas dificultam o trânsito e o acesso a serviços essenciais.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Impacto das Enchentes no Brasil -->
+    <section id="impacto-enchentes" class="py-12 md:py-16 lg:py-24 bg-gradient-to-br from-sky-700 to-indigo-800 text-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 md:gap-20 items-center">
+                <div class="order-2 lg:order-1">
+                    <h2 class="text-3xl sm:text-4xl md:text-5xl font-bold mb-6 md:mb-8 font-heading">Impacto das Enchentes no Brasil</h2>
+                    <p class="text-lg sm:text-xl text-sky-100 mb-8 md:mb-10 max-w-2xl font-body">
+                        As enchentes causam anualmente bilhões em prejuízos, deslocam comunidades inteiras e colocam em risco a vida das pessoas nas áreas afetadas.
+                    </p>
+                    <div class="space-y-6 md:space-y-8">
+                        <div class="flex items-center">
+                            <span class="text-4xl sm:text-5xl md:text-6xl font-bold text-yellow-300 mr-4 min-w-[150px] sm:min-w-[180px] md:min-w-[220px]">R$ 4.0bi</span>
+                            <span class="text-base sm:text-lg md:text-xl text-indigo-200 font-medium">em prejuízos anuais</span>
+                        </div>
+                        <div class="flex items-center">
+                            <span class="text-4xl sm:text-5xl md:text-6xl font-bold text-yellow-300 mr-4 min-w-[150px] sm:min-w-[180px] md:min-w-[220px]">+350k</span>
+                            <span class="text-base sm:text-lg md:text-xl text-indigo-200 font-medium">pessoas afetadas</span>
+                        </div>
+                        <div class="flex items-center">
+                            <span class="text-4xl sm:text-5xl md:text-6xl font-bold text-yellow-300 mr-4 min-w-[150px] sm:min-w-[180px] md:min-w-[220px]">74%</span>
+                            <span class="text-base sm:text-lg md:text-xl text-indigo-200 font-medium">dos municípios têm áreas de risco</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="order-1 lg:order-2 relative flex flex-col justify-center items-center mt-12 lg:mt-0 h-full min-h-[300px] sm:min-h-[350px] md:min-h-[400px]">
+                    <div class="water-simulator-container w-full max-w-xs h-64 sm:h-72 md:h-80 bg-black bg-opacity-20 rounded-xl shadow-2xl p-3">
+                        <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+                            <defs>
+                                <linearGradient id="waterGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                    <stop offset="0%" style="stop-color:#38bdf8;stop-opacity:0.7" />
+                                    <stop offset="100%" style="stop-color:#3730a3;stop-opacity:0.9" />
+                                </linearGradient>
+                                <clipPath id="glassClip">
+                                    <rect x="5" y="5" width="90" height="90" rx="10" ry="10" />
+                                </clipPath>
+                            </defs>
+                            <rect x="5" y="5" width="90" height="90" rx="10" ry="10" fill="rgba(10, 20, 39, 0.2)" stroke="#7dd3fc" stroke-width="0.3" />
+                            <g clip-path="url(#glassClip)">
+                                <path id="waterPath" d="M0,100 Q50,100 100,100 L100,100 L0,100 Z" fill="url(#waterGradient)" />
+                            </g>
+                            <line x1="7" y1="75" x2="12" y2="75" stroke="#e0f2fe" stroke-width="0.5" /> <text x="14" y="75.5" font-size="3.5" fill="#e0f2fe" class="font-body">25%</text>
+                            <line x1="7" y1="50" x2="12" y2="50" stroke="#e0f2fe" stroke-width="0.5" /> <text x="14" y="50.5" font-size="3.5" fill="#e0f2fe" class="font-body">50%</text>
+                            <line x1="7" y1="25" x2="12" y2="25" stroke="#e0f2fe" stroke-width="0.5" /> <text x="14" y="25.5" font-size="3.5" fill="#e0f2fe" class="font-body">75%</text>
+                        </svg>
+                    </div>
+                    <p class="text-center text-indigo-100 mt-4 text-sm sm:text-base font-medium">Nível de água nas enchentes do RS</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Sobre a Solução -->
+    <section class="py-16 md:py-24 bg-white" id="sobre">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6">
+            <div class="text-center mb-12 md:mb-16 lg:mb-20">
+                <h2 class="text-2xl sm:text-3xl md:text-4xl font-bold text-secondary mb-3 sm:mb-4 font-heading">Nossa solução: Inteligência e Economia contra alagamentos</h2>
+                <div class="w-20 sm:w-24 h-1 bg-primary mx-auto mb-4 sm:mb-6"></div>
+                <p class="text-base sm:text-lg md:text-xl text-gray-700 max-w-3xl mx-auto font-body">
+                    Apresentamos um sistema de monitoramento de bueiros em tempo real, usando sensores e microcontroladores ESP32, com transmissão MQTT e um dashboard interativo para alertas preventivos.
+                </p>
+            </div>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 md:gap-16 items-center">
+                <div class="animate-on-scroll">
+                    <div class="bg-gray-100 rounded-3xl p-6 sm:p-8">
+                        <p class="text-gray-700 text-base sm:text-lg leading-relaxed font-body">
+                            <span class="font-bold text-primary">Como funciona:</span> Nosso sistema utiliza microcontroladores ESP32 com sensores de nível de água e umidade, alojados em caixas de proteção IP67. Estes dispositivos monitoram continuamente os bueiros e transmitem os dados via MQTT para um broker (Fiware ou Mosquitto).
+                        </p>
+                        <p class="text-gray-700 text-base sm:text-lg leading-relaxed mt-4 sm:mt-6 font-body">
+                            As informações são visualizadas em um dashboard interativo (Python/Django), que também dispara alertas automáticos (HTTP/SMS) quando níveis críticos são atingidos. Isso permite que prefeituras e a Defesa Civil atuem rapidamente, minimizando danos e protegendo a população.
+                        </p>
+                        <div class="mt-6 sm:mt-8 bg-gradient-to-r from-blue-600 to-primary rounded-2xl p-6 sm:p-8 text-white shadow-xl">
+                            <h3 class="text-xl sm:text-2xl font-bold mb-3 sm:mb-4 text-center font-heading">Diferencial de Custo Revolucionário</h3>
+                            <div class="flex flex-col sm:flex-row items-center justify-around text-center space-y-4 sm:space-y-0 sm:space-x-4">
+                                <div>
+                                    <div class="text-3xl sm:text-4xl font-bold vantagem-competitiva-valor" data-final="300">R$300</div>
+                                    <div class="text-xs sm:text-sm">Nossa solução (por unidade)</div>
+                                </div>
+                                <div class="text-xl sm:text-2xl font-bold text-white my-2 sm:my-0">
+                                    <!-- Seta para Desktop (direita) -->
+                                    <i class="fas fa-long-arrow-alt-right hidden sm:inline-block seta-comparativo-desktop"></i>
+                                    <!-- Seta para Mobile (baixo) -->
+                                    <i class="fas fa-long-arrow-alt-down inline-block sm:hidden seta-comparativo-mobile"></i>
+                                </div>
+                                <div>
+                                    <div class="text-3xl sm:text-4xl font-bold vantagem-competitiva-valor" data-final="15000">R$15.000</div>
+                                    <div class="text-xs sm:text-sm">Outras soluções (por unidade)</div>
+                                </div>
+                            </div>
+                            <p class="mt-3 sm:mt-4 text-center text-base sm:text-lg font-semibold">Economia de até <span class="font-bold text-white">98%</span>, democratizando a prevenção!</p>
+                        </div>
+                        <p class="text-gray-700 text-xs sm:text-sm leading-relaxed mt-4 sm:mt-6 font-body">
+                            <em>Componentes principais: ESP32 (R$28-50), Sensor de Nível Analógico (R$10), Sensor de Umidade DHT22 (R$40), Caixa IP67 (R$50), bateria Li-ion com painel solar ou alimentação municipal.</em>
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="animate-on-scroll mt-8 lg:mt-0">
+                    <!-- Diagrama Visual Simplificado -->
+                    <div class="bg-white rounded-3xl p-6 sm:p-8 shadow-lg border border-gray-200">
+                        <h3 class="text-xl sm:text-2xl font-bold text-secondary mb-4 sm:mb-6 text-center font-heading">Fluxo da Solução</h3>
+                        <div class="space-y-4 sm:space-y-6">
+                            <div class="flex items-center">
+                                <div class="flex-shrink-0 w-12 h-12 sm:w-16 sm:h-16 bg-primary rounded-full flex items-center justify-center text-white shadow-md">
+                                    <i class="fas fa-water text-xl sm:text-2xl"></i>
+                                </div>
+                                <div class="ml-3 sm:ml-4">
+                                    <h4 class="text-base sm:text-lg font-semibold text-secondary font-heading">1. Sensores no bueiro</h4>
+                                    <p class="text-xs sm:text-sm text-gray-600 font-body">Detectam nível da água e umidade.</p>
+                                </div>
+                            </div>
+                            <div class="flex justify-center my-1 sm:my-2">
+                                <i class="fas fa-arrow-down text-primary text-xl sm:text-2xl"></i>
+                            </div>
+                            <div class="flex items-center">
+                                <div class="flex-shrink-0 w-12 h-12 sm:w-16 sm:h-16 bg-primary rounded-full flex items-center justify-center text-white shadow-md">
+                                    <i class="fas fa-microchip text-xl sm:text-2xl"></i>
+                                </div>
+                                <div class="ml-3 sm:ml-4">
+                                    <h4 class="text-base sm:text-lg font-semibold text-secondary font-heading">2. ESP32 Processa</h4>
+                                    <p class="text-xs sm:text-sm text-gray-600 font-body">Coleta e prepara os dados dos sensores.</p>
+                                </div>
+                            </div>
+                            <div class="flex justify-center my-2">
+                                <i class="fas fa-arrow-down text-primary text-xl sm:text-2xl"></i>
+                            </div>
+                            <div class="flex items-center">
+                                <div class="flex-shrink-0 w-12 h-12 sm:w-16 sm:h-16 bg-primary rounded-full flex items-center justify-center text-white shadow-md">
+                                    <i class="fas fa-broadcast-tower text-xl sm:text-2xl"></i>
+                                </div>
+                                <div class="ml-3 sm:ml-4">
+                                    <h4 class="text-base sm:text-lg font-semibold text-secondary font-heading">3. Transmissão MQTT</h4>
+                                    <p class="text-xs sm:text-sm text-gray-600 font-body">Dados enviados para o Broker (Fiware/Mosquitto).</p>
+                                </div>
+                            </div>
+                            <div class="flex justify-center my-2">
+                                <i class="fas fa-arrow-down text-primary text-xl sm:text-2xl"></i>
+                            </div>
+                            <div class="flex items-center">
+                                <div class="flex-shrink-0 w-12 h-12 sm:w-16 sm:h-16 bg-primary rounded-full flex items-center justify-center text-white shadow-md">
+                                    <i class="fas fa-tachometer-alt text-xl sm:text-2xl"></i>
+                                </div>
+                                <div class="ml-3 sm:ml-4">
+                                    <h4 class="text-base sm:text-lg font-semibold text-secondary font-heading">4. Dashboard e Alertas</h4>
+                                    <p class="text-xs sm:text-sm text-gray-600 font-body">Visualização em tempo real e notificações (Python/Django).</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Funcionalidades Chave -->
+    <section id="funcionalidades" class="py-12 md:py-16 lg:py-24 bg-gray-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6">
+            <div class="text-center mb-10 md:mb-12 lg:mb-16">
+                <h2 class="text-2xl sm:text-3xl md:text-4xl font-bold text-secondary mb-3 sm:mb-4 font-heading">Funcionalidades chave: O que você ganha?</h2>
+                <div class="w-16 sm:w-20 h-1 bg-primary mx-auto mb-4 sm:mb-6"></div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
+                <div class="animate-on-scroll bg-white p-6 sm:p-8 rounded-xl shadow-lg hover:shadow-2xl transition-shadow duration-300 content-3d-card">
+                    <div class="flex-shrink-0 w-12 h-12 sm:w-16 sm:h-16 bg-primary rounded-full flex items-center justify-center text-white shadow-md mb-4 sm:mb-6">
+                        <i class="fas fa-eye text-xl sm:text-2xl"></i>
+                    </div>
+                    <h3 class="text-lg sm:text-xl font-bold text-secondary mb-2 sm:mb-3 font-heading">Visualização em Tempo Real</h3>
+                    <p class="text-sm sm:text-base text-gray-600 font-body">Acompanhe o nível da água nos bueiros monitorados através de um dashboard intuitivo e atualizado instantaneamente.</p>
+                </div>
+                <div class="animate-on-scroll bg-white p-6 sm:p-8 rounded-xl shadow-lg hover:shadow-2xl transition-shadow duration-300 content-3d-card" style="animation-delay: 0.2s;">
+                    <div class="flex-shrink-0 w-12 h-12 sm:w-16 sm:h-16 bg-primary rounded-full flex items-center justify-center text-white shadow-md mb-4 sm:mb-6">
+                        <i class="fas fa-bell text-xl sm:text-2xl"></i>
+                    </div>
+                    <h3 class="text-lg sm:text-xl font-bold text-secondary mb-2 sm:mb-3 font-heading">Alertas Preventivos Inteligentes</h3>
+                    <p class="text-sm sm:text-base text-gray-600 font-body">Seja notificado ANTES que o alagamento ocorra! O sistema envia alertas automáticos para a Defesa Civil e equipes responsáveis.</p>
+                </div>
+                <div class="animate-on-scroll bg-white p-6 sm:p-8 rounded-xl shadow-lg hover:shadow-2xl transition-shadow duration-300 content-3d-card" style="animation-delay: 0.4s;">
+                    <div class="flex-shrink-0 w-12 h-12 sm:w-16 sm:h-16 bg-primary rounded-full flex items-center justify-center text-white shadow-md mb-4 sm:mb-6">
+                        <i class="fas fa-history text-xl sm:text-2xl"></i>
+                    </div>
+                    <h3 class="text-lg sm:text-xl font-bold text-secondary mb-2 sm:mb-3 font-heading">Histórico e Análise de Dados</h3>
+                    <p class="text-sm sm:text-base text-gray-600 font-body">Acesse relatórios e gráficos mensais sobre ocorrências por local, ajudando no planejamento urbano e otimizando a manutenção.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Sobre -->
+    <section id="equipe-stakeholders" class="py-16 md:py-24 bg-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6">
+            <div class="text-center mb-12 md:mb-16 lg:mb-20">
+                <h2 class="text-2xl sm:text-3xl md:text-4xl font-bold text-secondary mb-3 sm:mb-4 font-heading">Sobre o projeto e seus benefícios</h2>
+                <div class="w-20 sm:w-24 h-1 bg-primary mx-auto mb-4 sm:mb-6"></div>
+                <p class="text-base sm:text-lg md:text-xl text-gray-700 max-w-3xl mx-auto font-body">
+                    Conheça a equipe por trás da solução e como ela beneficia toda a comunidade.
+                </p>
+            </div>
+            
+            <!-- Benefícios Para Todos -->
+            <div class="mb-12 md:mb-16 lg:mb-20">
+                <h3 class="text-xl sm:text-2xl md:text-3xl font-bold text-secondary mb-2 sm:mb-3 text-center font-heading">Benefícios para todos</h3>
+                <p class="text-gray-700 text-center mb-8 md:mb-12 max-w-3xl mx-auto font-body text-sm sm:text-base">
+                    Nossa solução é projetada para trazer vantagens significativas para diversos públicos envolvidos na gestão e prevenção de enchentes.
+                </p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+                    <div class="animate-on-scroll bg-gradient-to-br from-primary/80 to-blue-500/80 rounded-2xl p-4 sm:p-6 text-white shadow-xl hover:shadow-2xl transition-shadow duration-300 stakeholder-3d-card">
+                        <div class="flex justify-center mb-3 sm:mb-4">
+                            <i class="fas fa-city text-3xl sm:text-4xl md:text-5xl"></i>
+                        </div>
+                        <h4 class="text-base sm:text-lg md:text-xl font-bold mb-2 text-center font-heading">Prefeituras Municipais</h4>
+                        <ul class="list-disc list-inside space-y-1 text-xs sm:text-sm font-body">
+                            <li>Redução de custos com danos.</li>
+                            <li>Otimização da infraestrutura.</li>
+                            <li>Melhora da segurança pública.</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="animate-on-scroll bg-gradient-to-br from-primary/80 to-blue-500/80 rounded-2xl p-4 sm:p-6 text-white shadow-xl hover:shadow-2xl transition-shadow duration-300 stakeholder-3d-card" style="animation-delay: 0.1s;">
+                        <div class="flex justify-center mb-3 sm:mb-4">
+                            <i class="fas fa-shield-alt text-3xl sm:text-4xl md:text-5xl"></i>
+                        </div>
+                        <h4 class="text-base sm:text-lg md:text-xl font-bold mb-2 text-center font-heading">Defesa Civil</h4>
+                        <ul class="list-disc list-inside space-y-1 text-xs sm:text-sm font-body">
+                            <li>Informação antecipada para ações.</li>
+                            <li>Maior capacidade de resposta.</li>
+                            <li>Proteção eficaz de vidas.</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="animate-on-scroll bg-gradient-to-br from-primary/80 to-blue-500/80 rounded-2xl p-4 sm:p-6 text-white shadow-xl hover:shadow-2xl transition-shadow duration-300 stakeholder-3d-card" style="animation-delay: 0.2s;">
+                        <div class="flex justify-center mb-3 sm:mb-4">
+                            <i class="fas fa-house-user text-3xl sm:text-4xl md:text-5xl"></i>
+                        </div>
+                        <h4 class="text-base sm:text-lg md:text-xl font-bold mb-2 text-center font-heading">Cidadãos</h4>
+                        <ul class="list-disc list-inside space-y-1 text-xs sm:text-sm font-body">
+                            <li>Mais segurança e tranquilidade.</li>
+                            <li>Redução de perdas materiais.</li>
+                            <li>Alertas preventivos diretos (futuro).</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="animate-on-scroll bg-gradient-to-br from-primary/80 to-blue-500/80 rounded-2xl p-4 sm:p-6 text-white shadow-xl hover:shadow-2xl transition-shadow duration-300 stakeholder-3d-card" style="animation-delay: 0.3s;">
+                        <div class="flex justify-center mb-3 sm:mb-4">
+                            <i class="fas fa-chart-area text-3xl sm:text-4xl md:text-5xl"></i>
+                        </div>
+                        <h4 class="text-base sm:text-lg md:text-xl font-bold mb-2 text-center font-heading">Pesquisadores</h4>
+                        <ul class="list-disc list-inside space-y-1 text-xs sm:text-sm font-body">
+                            <li>Dados históricos para estudos.</li>
+                            <li>Base para planejamento urbano.</li>
+                            <li>Identificação de áreas críticas.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Nossa Equipe -->
+            <div class="mb-12 md:mb-16 lg:mb-20">
+                <h3 class="text-xl sm:text-2xl md:text-3xl font-bold text-secondary mb-2 sm:mb-3 text-center font-heading">Nossa equipe</h3>
+                <p class="text-gray-700 text-center mb-8 md:mb-12 max-w-3xl mx-auto text-sm sm:text-base">
+                    Juntos, desenvolvemos uma solução que combina tecnologia acessível com impacto social significativo para prevenir desastres causados por enchentes.
+                </p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
+                    <div class="bg-gradient-to-br from-blue-50 to-blue-200 rounded-2xl p-6 sm:p-8 text-center animate-on-scroll team-3d-card team-card-hover relative overflow-hidden">
+                        <div class="w-24 h-24 sm:w-32 sm:h-32 rounded-full mx-auto mb-4 sm:mb-6 flex items-center justify-center overflow-hidden bg-white">
+                            <img src="https://github.com/joaomatosq.png" alt="João Vitor de Matos Araujo" class="w-full h-full object-cover rounded-full shadow-lg" />
+                        </div>
+                        <h4 class="text-lg sm:text-xl font-bold text-secondary">João Vitor de Matos Araujo</h4>
+                        <p class="text-blue-300 mb-2 sm:mb-3 text-sm sm:text-base">RM559246</p>
+                        <p class="text-gray-700 text-xs sm:text-sm">Product Owner & Dev IoT</p>
+                        <div class="team-social-overlay absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-70 opacity-0 pointer-events-none transition-opacity duration-300">
+                            <a href="https://www.linkedin.com/in/joaomatosq/" target="_blank" class="mb-2 sm:mb-4 flex items-center text-white text-lg sm:text-2xl hover:text-primary transition">
+                                <i class="fab fa-linkedin mr-2"></i> /joaomatosq
+                            </a>
+                            <a href="https://github.com/joaomatosq" target="_blank" class="flex items-center text-white text-lg sm:text-2xl hover:text-primary transition">
+                                <i class="fab fa-github mr-2"></i> /joaomatosq
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-gradient-to-br from-blue-50 to-blue-200 rounded-2xl p-6 sm:p-8 text-center animate-on-scroll team-3d-card team-card-hover relative overflow-hidden">
+                        <div class="w-24 h-24 sm:w-32 sm:h-32 rounded-full mx-auto mb-4 sm:mb-6 flex items-center justify-center overflow-hidden bg-white">
+                            <img src="https://github.com/kato8088.png" alt="Gabriel Kato Peres" class="w-full h-full object-cover rounded-full shadow-lg" />
+                        </div>
+                        <h4 class="text-lg sm:text-xl font-bold text-secondary">Gabriel Kato Peres</h4>
+                        <p class="text-blue-300 mb-2 sm:mb-3 text-sm sm:text-base">RM560000</p>
+                        <p class="text-gray-700 text-xs sm:text-sm">Dev Back-End & Integração MQTT</p>
+                        <div class="team-social-overlay absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-70 opacity-0 pointer-events-none transition-opacity duration-300">
+                            <a href="https://www.linkedin.com/in/gabrikato/" target="_blank" class="mb-2 sm:mb-4 flex items-center text-white text-lg sm:text-2xl hover:text-primary transition">
+                                <i class="fab fa-linkedin mr-2"></i> /gabrikato
+                            </a>
+                            <a href="https://github.com/kato8088" target="_blank" class="flex items-center text-white text-lg sm:text-2xl hover:text-primary transition">
+                                <i class="fab fa-github mr-2"></i> /kato8088
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-gradient-to-br from-blue-50 to-blue-200 rounded-2xl p-6 sm:p-8 text-center animate-on-scroll team-3d-card team-card-hover relative overflow-hidden">
+                        <div class="w-24 h-24 sm:w-32 sm:h-32 rounded-full mx-auto mb-4 sm:mb-6 flex items-center justify-center overflow-hidden">
+                            <img src="https://github.com/rouri404.png" alt="Gabriel Couto Ribeiro" class="w-full h-full object-cover rounded-full shadow-lg" />
+                        </div>
+                        <h4 class="text-lg sm:text-xl font-bold text-secondary">Gabriel Couto Ribeiro</h4>
+                        <p class="text-blue-300 mb-2 sm:mb-3 text-sm sm:text-base">RM559579</p>
+                        <p class="text-gray-700 text-xs sm:text-sm">Dev Full Stack & Database</p>
+                        <div class="team-social-overlay absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-70 opacity-0 pointer-events-none transition-opacity duration-300">
+                            <a href="https://www.linkedin.com/in/gabricouto/" target="_blank" class="mb-2 sm:mb-4 flex items-center text-white text-lg sm:text-2xl hover:text-primary transition">
+                                <i class="fab fa-linkedin mr-2"></i> /gabricouto
+                            </a>
+                            <a href="https://github.com/rouri404" target="_blank" class="flex items-center text-white text-lg sm:text-2xl hover:text-primary transition">
+                                <i class="fab fa-github mr-2"></i> /rouri404
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Call to Action -->
+            <div class="text-center pt-8 md:pt-12">
+                <h3 class="text-xl sm:text-2xl md:text-3xl font-bold text-secondary mb-4 sm:mb-6 font-heading">Interessado em levar esta solução para sua cidade?</h3>
+                <p class="text-base sm:text-lg text-gray-700 mb-6 sm:mb-8 max-w-xl mx-auto font-body">
+                    Entre em contato conosco para discutir um projeto piloto ou saber mais sobre a implementação do sistema Moskitto.
+                </p>
+                <a href="#contato" 
+                   class="px-8 py-3 sm:px-10 sm:py-4 bg-primary text-white font-bold rounded-full transition-all duration-300 shadow-lg 
+                          hover:bg-blue-400 hover:shadow-xl hover:-translate-y-1 
+                          focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 focus:ring-offset-gray-50 text-base sm:text-lg">
+                    Fale Conosco
+                </a>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- Vídeo -->
+    <section id="video" class="py-16 md:py-24 bg-gray-50">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6">
+            <div class="text-center mb-8 md:mb-12">
+                <h2 class="text-2xl sm:text-3xl md:text-4xl font-bold text-secondary mb-3 sm:mb-4 font-heading">Veja funcionando</h2>
+                <div class="w-16 sm:w-20 h-1 bg-primary mx-auto"></div>
+            </div>
+            <div id="video-box" class="relative aspect-video rounded-3xl shadow-2xl overflow-hidden bg-gradient-to-br from-primary to-blue-500">
+                <button type="button" id="video-play" class="absolute inset-0 w-full flex flex-col items-center justify-center gap-4 text-white font-heading font-bold text-lg sm:text-xl focus:outline-none focus:ring-4 focus:ring-inset focus:ring-white">
+                    <span class="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white text-secondary flex items-center justify-center shadow-xl transition-transform duration-200 hover:scale-110"><i class="fas fa-play text-xl sm:text-2xl ml-1"></i></span>
+                    Assistir à apresentação
+                </button>
+            </div>
+            <p class="text-center text-sm text-gray-500 mt-3">O player do YouTube só é carregado quando você clica.</p>
+        </div>
+    </section>
+
+    <!-- Contato -->
+    <section id="contato" class="relative bg-gradient-to-br from-gray-50 to-primary bg-opacity-10">
+        <div class="absolute top-0 left-0 w-full h-32 sm:h-48 md:h-64" style="background: linear-gradient(to bottom, #fff 0%, transparent 100%);"></div>
+        <div class="relative max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-24">
+            <div class="text-center mb-12 md:mb-16 lg:mb-20">
+                <h2 class="text-2xl sm:text-3xl md:text-4xl font-bold text-secondary mb-3 sm:mb-4">Contato</h2>
+                <div class="w-20 sm:w-24 h-1 bg-primary mx-auto mb-4 sm:mb-6"></div>
+                <p class="text-base sm:text-lg md:text-xl text-gray-700 max-w-3xl mx-auto">
+                    Entre em contato conosco para mais informações sobre nossa solução
+                </p>
+            </div>
+            
+            <div class="grid grid-cols-1 gap-8 md:gap-12 max-w-2xl mx-auto">
+                <div class="contact-info-block">
+                    <div class="bg-gradient-to-br from-primary to-blue-500 rounded-3xl shadow-xl p-6 sm:p-8 text-white h-full">
+                        <h3 class="text-xl sm:text-2xl font-bold mb-4 sm:mb-6">Informações de contato</h3>
+                        
+                        <div class="space-y-4 sm:space-y-6">
+                            <div class="flex items-start">
+                                <i class="fas fa-envelope text-xl sm:text-2xl mt-1 mr-3 sm:mr-4"></i>
+                                <div class="min-w-0"> 
+                                    <h4 class="font-bold text-base sm:text-lg">Email</h4>
+                                    <p class="text-sm sm:text-base break-words">moskitto.inc@gmail.com</p>
+                                </div>
+                            </div>
+                            
+                            
+                            <div class="flex items-start">
+                                <i class="fas fa-map-marker-alt text-xl sm:text-2xl mt-1 mr-3 sm:mr-4"></i>
+                                <div class="min-w-0">
+                                    <h4 class="font-bold text-base sm:text-lg">Endereço</h4>
+                                    <p class="text-sm sm:text-base break-words">FIAP Paulista, Av. Paulista, 1106, Bela Vista, São Paulo - SP</p>
+                                </div>
+                            </div>
+                            
+                            <div class="mt-6 sm:mt-10">
+                                <h4 class="font-bold text-base sm:text-lg mb-3 sm:mb-4">Siga-nos</h4>
+                                <div class="flex space-x-3 sm:space-x-4">
+                                    <a href="https://www.youtube.com/@moskitto-e6c" target="_blank" rel="noopener noreferrer" class="social-icon w-10 h-10 sm:w-12 sm:h-12 bg-white bg-opacity-20 rounded-full flex items-center justify-center text-xl sm:text-2xl hover:bg-opacity-30 transition duration-300">
+                                        <i class="fab fa-youtube"></i>
+                                    </a>
+                                    <a href="https://github.com/GrupoMoskitto" target="_blank" rel="noopener noreferrer" class="social-icon w-10 h-10 sm:w-12 sm:h-12 bg-white bg-opacity-20 rounded-full flex items-center justify-center text-xl sm:text-2xl hover:bg-opacity-30 transition duration-300">
+                                        <i class="fab fa-github"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    </main>
+
+    <footer class="bg-secondary py-12 w-full">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div>
+                    <a href="#home" class="text-2xl font-bold text-white flex items-center mb-4">
+                        <img src="img/favicon.png" alt="Logo" class="w-10 h-10 mr-2" />
+                        <span>Moskitto</span>
+                    </a>
+                    <p class="text-gray-400">
+                        Tecnologia inovadora para prevenção de desastres naturais com foco em enchentes urbanas.
+                    </p>
+                </div>
+                
+                <div>
+                    <h4 class="text-lg font-bold text-white mb-4">Links Rápidos</h4>
+                    <ul class="space-y-2">
+                        <li><a href="#home" class="text-gray-400 hover:text-primary transition">Início</a></li>
+                        <li><a href="#sobre" class="text-gray-400 hover:text-primary transition">Sobre a Solução</a></li>
+                        <li><a href="#equipe-stakeholders" class="text-gray-400 hover:text-primary transition">Equipe</a></li>
+                        <li><a href="#contato" class="text-gray-400 hover:text-primary transition">Contato</a></li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h4 class="text-lg font-bold text-white mb-4">Recursos</h4>
+                    <ul class="space-y-2">
+                        <li><a href="https://github.com/rouri404/site-gs-fiap" target="_blank" rel="noopener noreferrer" class="text-gray-400 hover:text-primary transition">Repositório no GitHub</a></li>
+                        <li><a href="https://hub.docker.com/r/gabricoto/gs-fiap-monitor" target="_blank" rel="noopener noreferrer" class="text-gray-400 hover:text-primary transition">Imagem no Docker Hub</a></li>
+                    </ul>
+                </div>
+                
+                <!-- Coluna para Siga-nos ou links adicionais, se necessário -->
+                <div>
+                    <h4 class="text-lg font-bold text-white mb-4">Siga-nos</h4>
+                    <div class="flex space-x-3">
+                        <a href="https://www.youtube.com/@moskitto-e6c" target="_blank" rel="noopener noreferrer" class="text-gray-400 hover:text-primary transition"><i class="fab fa-youtube fa-lg"></i></a>
+                        <a href="https://github.com/GrupoMoskitto" target="_blank" rel="noopener noreferrer" class="text-gray-400 hover:text-primary transition"><i class="fab fa-github fa-lg"></i></a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="border-t border-gray-800 mt-12 pt-8 text-center">
+                <p class="text-gray-400 text-sm">
+                    &copy; 2025 Moskitto. Todos os direitos reservados. Desenvolvido pela equipe de Engenharia de Software da <a href="#" class="text-primary hover:underline">1ESPA - FIAP</a>.
+                </p>
+            </div>
+        </div>
+    </footer>
+
+
+    <script>
+        // Funções específicas da Home Page
+        function animateWaterLevelGSAP() {
+            const waterLevelElement = document.getElementById('water-level');
+            if (!waterLevelElement) return;
+
+            gsap.set(waterLevelElement, { height: '30%' });
+
+            gsap.to(waterLevelElement, {
+                height: '70%',
+                duration: 2,
+                ease: 'sine.inOut',
+                repeat: -1,
+                yoyo: true
+            });
+        }
+
+        // Efeito 3D interativo para cards da equipe e stakeholders
+        function setup3DCards() {
+            function add3DEffect(selector, maxRotate) {
+                document.querySelectorAll(selector).forEach(card => {
+                    card.style.transition = 'transform 0.12s cubic-bezier(0.4,0.7,0.4,1), box-shadow 0.12s cubic-bezier(0.4,0.7,0.4,1)';
+                    card.addEventListener('mousemove', (e) => {
+                        const rect = card.getBoundingClientRect();
+                        const x = e.clientX - rect.left;
+                        const y = e.clientY - rect.top;
+                        const centerX = rect.width / 2;
+                        const centerY = rect.height / 2;
+                        const rotateX = ((y - centerY) / centerY) * maxRotate;
+                        const rotateY = ((x - centerX) / centerX) * -maxRotate;
+                        card.style.transform = `perspective(900px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.04,1.04,1.04)`;
+                        card.style.boxShadow = `${-rotateY*2}px ${rotateX*2}px 40px 0 rgba(0,0,0,0.18)`;
+                    });
+                    card.addEventListener('mouseleave', () => {
+                        card.style.transform = 'perspective(900px) rotateX(0deg) rotateY(0deg) scale3d(1,1,1)';
+                        card.style.boxShadow = '';
+                    });
+                });
+            }
+            add3DEffect('.team-3d-card', 18);
+            add3DEffect('.stakeholder-3d-card', 15);
+            add3DEffect('.content-3d-card', 10);
+
+            // Efeitos 3D para cards de estatística da seção Impacto REMOVIDOS para reverter ao estado do Passo 5
+        }
+
+        // Função add3DEffectToElement REMOVIDA para reverter ao estado do Passo 5
+
+        // Overlay social da equipe
+        function setupTeamSocialOverlay() {
+            document.querySelectorAll('.team-card-hover').forEach(card => {
+                card.addEventListener('mouseenter', () => {
+                    const overlay = card.querySelector('.team-social-overlay');
+                    overlay.classList.remove('opacity-0', 'pointer-events-none');
+                    overlay.classList.add('opacity-100');
+                });
+                card.addEventListener('mouseleave', () => {
+                    const overlay = card.querySelector('.team-social-overlay');
+                    overlay.classList.add('opacity-0');
+                    overlay.classList.remove('opacity-100');
+                    setTimeout(() => overlay.classList.add('pointer-events-none'), 300);
+                });
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            animateWaterLevelGSAP();
+            setup3DCards();
+            setupTeamSocialOverlay();
+            
+            if (typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined'){
+                // Efeito de entrada mais moderno para cards principais
+                gsap.utils.toArray('.animate-on-scroll').forEach((el, i) => {
+                    gsap.fromTo(el, {
+                        opacity: 0,
+                        y: 70,
+                        scale: 0.95
+                    }, {
+                        opacity: 1,
+                        y: 0,
+                        scale: 1,
+                        duration: 1.0,
+                        delay: i * 0.1,
+                        ease: 'power3.out',
+                        scrollTrigger: {
+                            trigger: el,
+                            start: 'top 90%',
+                            toggleActions: 'play none none none'
+                        }
+                    });
+                });
+
+                // Animação para a nova seção de Impacto das Enchentes
+                const impactoSection = document.getElementById('impacto-enchentes');
+                if (impactoSection) {
+                    // Animar título e parágrafo
+                    gsap.from([impactoSection.querySelector('h2'), impactoSection.querySelector('p.text-sky-100')], {
+                        scrollTrigger: {
+                            trigger: impactoSection,
+                            start: 'top 80%',
+                            once: true
+                        },
+                        opacity: 0,
+                        y: 50,
+                        duration: 1,
+                        stagger: 0.3,
+                        ease: 'power3.out'
+                    });
+
+                    // Animar os dados estatísticos (Restaurado do Passo 5)
+                    const statsElements = impactoSection.querySelectorAll('.space-y-6 > div, .space-y-8 > div');
+                    statsElements.forEach((statDiv, index) => {
+                        const numberSpan = statDiv.querySelector('span:first-child');
+                        const textSpan = statDiv.querySelector('span:last-child');
+
+                        if (numberSpan) {
+                            let finalValueText = numberSpan.textContent.trim();
+                            let statObj = { value: 0 };
+                            let targetValue = 0;
+                            let precision = 0;
+                            let prefix = "";
+                            let suffix = "";
+
+                            if (finalValueText === "R$ 4.0bi") {
+                                targetValue = 4.0;
+                                precision = 1; 
+                                prefix = "R$ ";
+                                suffix = "bi";
+                            } else if (finalValueText === "+350k") {
+                                targetValue = 350;
+                                precision = 0;
+                                prefix = "+";
+                                suffix = "k";
+                            } else if (finalValueText === "74%") {
+                                targetValue = 74;
+                                precision = 0;
+                                suffix = "%";
+                            }
+
+                            if (targetValue > 0 || finalValueText === "R$ 4.0bi") {
+                                gsap.to(statObj, {
+                                    value: targetValue,
+                                    duration: 2.8,
+                                    ease: 'power2.out',
+                                    snap: { value: precision > 0 ? 1 / Math.pow(10, precision) : 1 },
+                                    scrollTrigger: {
+                                        trigger: statDiv,
+                                        start: 'top 85%',
+                                        once: true
+                                    },
+                                    onUpdate: function() {
+                                        numberSpan.innerText = prefix + statObj.value.toFixed(precision) + suffix;
+                                    },
+                                    onComplete: function() {
+                                        numberSpan.innerText = finalValueText;
+                                    }
+                                });
+                            }
+                        }
+                        
+                        if (textSpan) {
+                             gsap.from(textSpan, {
+                                scrollTrigger: {
+                                    trigger: statDiv,
+                                    start: 'top 85%',
+                                    once: true
+                                },
+                                opacity: 0,
+                                x: 30,
+                                duration: 1,
+                                delay: 0.6 + (index * 0.2) 
+                            });
+                        }
+                        gsap.from(statDiv, {
+                            scrollTrigger: {
+                                trigger: statDiv,
+                                start: 'top 85%',
+                                once: true
+                            },
+                            opacity: 0,
+                            y: 30,
+                            duration: 1,
+                            delay: index * 0.2
+                        });
+                    });
+
+                    // Animar a simulação de água SVG (Restaurado do Passo 5)
+                    const waterPath = impactoSection.querySelector('#waterPath');
+                    const waterContainer = impactoSection.querySelector('.water-simulator-container');
+
+                    if (waterPath && waterContainer) {
+                        gsap.fromTo(waterPath,
+                            { attr: { d: "M0,95 Q50,95 100,95 L100,100 L0,100 Z" } }, // FROM state
+                            { // TO state
+                                attr: { d: "M0,23 Q50,23 100,23 L100,100 L0,100 Z" },
+                                duration: 2,
+                                ease: "power1.inOut",
+                                scrollTrigger: {
+                                    trigger: waterContainer,
+                                    start: "top 80%",
+                                    once: true,
+                                    toggleActions: "play none none none" // Explicitly prevent reset/reversal
+                                },
+                                onComplete: () => {
+                                    // Initialize wave animation only once after fill is complete
+                                    if (!waterContainer.dataset.waveAnimationInitialized) {
+                                        waterContainer.dataset.waveAnimationInitialized = 'true';
+
+                                        gsap.timeline({
+                                            scrollTrigger: {
+                                                trigger: waterContainer,
+                                                start: "top 70%", // Adjust if needed, ensures container is somewhat visible
+                                                toggleActions: "play pause resume pause"
+                                            },
+                                            repeat: -1,
+                                            yoyo: true,
+                                            defaults: {duration: 3.5, ease: "sine.inOut"}
+                                        })
+                                        .to(waterPath, { attr: { d: "M0,23 Q50,15 100,23 L100,100 L0,100 Z" } }) // Wave peak
+                                        .to(waterPath, { attr: { d: "M0,23 Q50,31 100,23 L100,100 L0,100 Z" } }); // Wave trough
+                                    }
+                                }
+                            }
+                        );
+                    }
+                }
+
+                // Efeito Parallax para a seção #impacto-enchentes REMOVIDO para reverter ao Passo 5
+                // if (impactoSection && typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined') {
+                    // const textBlock = impactoSection.querySelector('.order-2.lg\\:order-1\');
+                    // const waterBlock = impactoSection.querySelector('.order-1.lg\\:order-2\');
+                    // Lógica de parallax removida ...
+                // }
+
+                gsap.from('.hero-parallax', {
+                    scrollTrigger: {
+                        trigger: '#home',
+                        start: 'top top',
+                        end: 'bottom top',
+                        scrub: true
+                    },
+                    y: 50,
+                    opacity: 0.7
+                });
+                gsap.to('.sensor-animate', { 
+                    scale: 1.2,
+                    repeat: -1,
+                    yoyo: true,
+                    duration: 1,
+                    ease: "power1.inOut"
+                });
+                // Animação de contagem e seta na Vantagem Competitiva (revertendo para a versão do Passo 5)
+                if (document.querySelector('.vantagem-competitiva-valor')) {
+                    gsap.fromTo('.vantagem-competitiva-valor[data-final]',
+                        { innerText: 0 },
+                        {
+                            innerText: (i, el) => el.getAttribute('data-final'),
+                            duration: 3.2,
+                            ease: 'power1.out',
+                            snap: { innerText: 1 },
+                            scrollTrigger: {
+                                trigger: '.vantagem-competitiva-valor',
+                                start: 'top 90%',
+                                once: true
+                            },
+                            onUpdate: function() {
+                                document.querySelectorAll('.vantagem-competitiva-valor[data-final]').forEach(el => {
+                                    let val = parseInt(el.innerText.replace(/\D/g, ''));
+                                    if (el.getAttribute('data-final').includes('15')) { 
+                                        el.innerText = 'R$' + val.toLocaleString('pt-BR');
+                                    } else { 
+                                        el.innerText = 'R$' + val;
+                                    }
+                                });
+                            },
+                            onComplete: function() { 
+                                document.querySelectorAll('.vantagem-competitiva-valor[data-final]').forEach(el => {
+                                    let finalVal = parseInt(el.getAttribute('data-final'));
+                                     if (el.getAttribute('data-final').includes('15')) {
+                                        el.innerText = 'R$' + finalVal.toLocaleString('pt-BR');
+                                     } else {
+                                        el.innerText = 'R$' + finalVal;
+                                     }
+                                });
+                            }
+                        }
+                    );
+
+                    // Animação para a seta de desktop
+                    if (document.querySelector('.seta-comparativo-desktop')) {
+                        gsap.to('.seta-comparativo-desktop', {
+                            x: 10, 
+                            repeat: -1, 
+                            yoyo: true, 
+                            duration: 0.7, 
+                            ease: 'sine.inOut', 
+                            scrollTrigger: { 
+                                trigger: '.seta-comparativo-desktop',
+                                start: 'top 90%'
+                            }
+                        });
+                    }
+
+                    // Animação para a seta de mobile
+                    if (document.querySelector('.seta-comparativo-mobile')) {
+                        gsap.to('.seta-comparativo-mobile', {
+                            y: 8, 
+                            repeat: -1,
+                            yoyo: true,
+                            duration: 0.7,
+                            ease: 'sine.inOut',
+                            scrollTrigger: {
+                                trigger: '.seta-comparativo-mobile',
+                                start: 'top 90%'
+                            }
+                        });
+                    }
+                }
+
+                // Animação específica para a seção de contato
+                if (document.querySelector('.contact-form-block') && document.querySelector('.contact-info-block')) {
+                    gsap.from('.contact-form-block', {
+                        opacity: 0,
+                        y: 50,
+                        duration: 1,
+                        ease: 'power3.out',
+                        scrollTrigger: {
+                            trigger: '.contact-form-block',
+                            start: 'top 90%',
+                            toggleActions: 'play none none none'
+                        }
+                    });
+                    gsap.from('.contact-info-block', {
+                        opacity: 0,
+                        y: 50,
+                        duration: 1,
+                        delay: 0.2, // Pequeno atraso para o segundo bloco
+                        ease: 'power3.out',
+                        scrollTrigger: {
+                            trigger: '.contact-info-block',
+                            start: 'top 90%',
+                            toggleActions: 'play none none none'
+                        }
+                    });
+                }
+            } else {
+                console.warn("GSAP ou ScrollTrigger não carregados (home.html).")
+            }
+
+            // Animação específica para o logoText na home page
+            const logoTextHome = document.getElementById('logo-text');
+            const sobreSection = document.getElementById('sobre');
+
+            if (logoTextHome && sobreSection && typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined') {
+                // Garante que o logo comece visível na home
+                gsap.set(logoTextHome, {opacity: 1, x: 0}); 
+
+                gsap.timeline({
+                    scrollTrigger: {
+                        trigger: sobreSection,
+                        start: "top center",
+                        end: "bottom top",
+                        toggleActions: "play none none reverse"
+                    }
+                })
+                .to(logoTextHome, {
+                    x: -15,
+                    opacity: 0,
+                    duration: 0.4,
+                    ease: 'power2.in'
+                });
+            }
+        });
+    </script>
+
+    <script>
+        // Carrega o player do YouTube só quando o visitante pede
+        document.getElementById('video-play').addEventListener('click', () => {
+            const frame = document.createElement('iframe');
+            frame.src = 'https://www.youtube-nocookie.com/embed/0A0773sl7Os?autoplay=1&rel=0';
+            frame.title = 'Apresentação do Moskitto';
+            frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+            frame.allowFullscreen = true;
+            frame.className = 'absolute inset-0 w-full h-full border-0';
+            document.getElementById('video-box').replaceChildren(frame);
+        });
+    </script>
+
+    <script>
+        // Funções Globais
+        function setupScrollAnimations() {
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('visible');
+                    }
+                });
+            }, {
+                threshold: 0.1
+            });
+            
+            document.querySelectorAll('.animate-on-scroll').forEach(el => {
+                observer.observe(el);
+            });
+        }
+        
+        function setupMobileMenu() {
+            const menuButton = document.getElementById('mobile-menu-button');
+            const mobileMenu = document.getElementById('mobile-menu');
+            if (!menuButton || !mobileMenu) return;
+
+            function openMenu() {
+                mobileMenu.classList.remove('opacity-0', 'invisible', '-translate-y-2');
+                mobileMenu.classList.add('opacity-100', 'visible', 'translate-y-0');
+            }
+
+            function closeMenu() {
+                mobileMenu.classList.remove('opacity-100', 'visible', 'translate-y-0');
+                mobileMenu.classList.add('opacity-0', '-translate-y-2');
+                setTimeout(() => {
+                    mobileMenu.classList.add('invisible');
+                }, 300); 
+            }
+
+            menuButton.addEventListener('click', () => {
+                if (mobileMenu.classList.contains('invisible')) {
+                    openMenu();
+                } else {
+                    closeMenu();
+                }
+            });
+            
+            // Fechar menu ao clicar em um link (se o link for para a mesma página com #)
+            mobileMenu.querySelectorAll("a[href^='#']").forEach(link => {
+                link.addEventListener('click', () => {
+                    closeMenu();
+                });
+            });
+        }
+        
+        function setupNavbarScroll() {
+            const navbar = document.querySelector('.navbar');
+            if (!navbar) return;
+            // Esta função agora APENAS controla a classe 'scrolled' do navbar.
+            window.addEventListener('scroll', () => {
+                if (window.scrollY > 100) { // Usaremos 100px para o efeito visual do navbar
+                    navbar.classList.add('scrolled');
+                } else {
+                    navbar.classList.remove('scrolled');
+                }
+            });
+        }
+
+        // Inicialização Global
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined'){
+                gsap.registerPlugin(ScrollTrigger);
+                console.log("GSAP e ScrollTrigger registrados globalmente.");
+            } else {
+                console.warn("GSAP ou ScrollTrigger não carregados (base.html).")
+            }
+
+            setupScrollAnimations();
+            setupMobileMenu();
+            setupNavbarScroll(); // Mantida, mas só para estilo do navbar
+        });
+
+        // ROLAGEM SUAVE PARA ÂNCORAS MESMO APÓS REDIRECIONAMENTO
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.location.hash) {
+                const el = document.querySelector(window.location.hash);
+                if (el) {
+                    setTimeout(() => {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 100); // Pequeno delay para garantir renderização
+                }
+            }
+        });
+
+    </script>
+</body>
+</html> 

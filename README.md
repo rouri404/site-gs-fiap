@@ -13,6 +13,12 @@ Plataforma web para monitoramento de sensores ambientais integrados com Fiware. 
 
 ---
 
+## Landing page
+
+A página de apresentação do projeto fica em [`landing/`](landing/) (a home do app, em HTML estático, sem o backend) e é publicada no GitHub Pages por [`.github/workflows/pages.yml`](.github/workflows/pages.yml) em [gs2025.cotoo.dev](https://gs2025.cotoo.dev).
+
+---
+
 ## Equipe
 
 | **Gabriel Couto Ribeiro** | [![GitHub](https://img.shields.io/badge/GitHub-181717?style=flat&logo=github&logoColor=white)](https://github.com/rouri404) | [![LinkedIn](https://img.shields.io/badge/LinkedIn-0077B5?style=flat&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/gabricouto/) |
